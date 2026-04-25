@@ -7,9 +7,6 @@ from connecteur import register_all_handlers
 TOKEN    = os.environ.get("BOT_TOKEN", "8276829062:AAGYh0x34pgmZLqPVANrHlW0cRHrE2OgFow")
 ADMIN_ID = int(os.environ.get("ADMIN_ID", "6610074482"))
 
-if not TOKEN:
-    raise ValueError("❌ BOT_TOKEN manquant !")
-
 logging.basicConfig(
     format="%(asctime)s | %(levelname)s | %(name)s | %(message)s",
     level=logging.INFO
