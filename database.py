@@ -34,15 +34,15 @@ def init_db():
     """)
     c.execute("""
         CREATE TABLE IF NOT EXISTS retraits (
-            id          INTEGER PRIMARY KEY AUTOINCREMENT,
-            user_id     INTEGER,
-            methode     TEXT,
-            numero      TEXT,
-            pays        TEXT,
-            montant     REAL,
-            statut      TEXT DEFAULT 'en_attente',
-            date_demande TEXT,
-            date_traitement TEXT
+            id               INTEGER PRIMARY KEY AUTOINCREMENT,
+            user_id          INTEGER,
+            methode          TEXT,
+            numero           TEXT,
+            pays             TEXT,
+            montant          REAL,
+            statut           TEXT DEFAULT 'en_attente',
+            date_demande     TEXT,
+            date_traitement  TEXT
         )
     """)
     c.execute("""
@@ -62,6 +62,26 @@ def init_db():
             date_ban    TEXT
         )
     """)
+    c.execute("""
+        CREATE TABLE IF NOT EXISTS blacklist_tel (
+            numero      TEXT PRIMARY KEY,
+            raison      TEXT,
+            date_ban    TEXT
+        )
+    """)
+    c.execute("""
+        CREATE TABLE IF NOT EXISTS blacklist_pays (
+            pays        TEXT PRIMARY KEY,
+            raison      TEXT,
+            date_ban    TEXT
+        )
+    """)
+    c.execute("""
+        CREATE TABLE IF NOT EXISTS parametres (
+            cle         TEXT PRIMARY KEY,
+            valeur      TEXT
+        )
+    """)
     conn.commit()
     conn.close()
 
@@ -77,7 +97,8 @@ def create_user(user_id, username, full_name, parrain_id=None):
     conn = get_connection()
     try:
         conn.execute("""
-            INSERT OR IGNORE INTO users (user_id, username, full_name, solde, parrain_id, ref_code, date_join, est_banni)
+            INSERT OR IGNORE INTO users
+            (user_id, username, full_name, solde, parrain_id, ref_code, date_join, est_banni)
             VALUES (?, ?, ?, 0, ?, ?, ?, 0)
         """, (user_id, username, full_name, parrain_id, ref_code, _now()))
         conn.commit()
@@ -143,10 +164,20 @@ def get_stats():
     actifs = conn.execute("SELECT COUNT(*) as n FROM users WHERE est_banni = 0").fetchone()["n"]
     bannis = conn.execute("SELECT COUNT(*) as n FROM users WHERE est_banni = 1").fetchone()["n"]
     parrainages = conn.execute("SELECT COUNT(*) as n FROM parrainages").fetchone()["n"]
+    total_gains = conn.execute("SELECT COALESCE(SUM(montant),0) as n FROM retraits WHERE statut='valide'").fetchone()["n"]
+    total_retraits = conn.execute("SELECT COALESCE(SUM(montant),0) as n FROM retraits WHERE statut='valide'").fetchone()["n"]
     retraits_att = conn.execute("SELECT COUNT(*) as n FROM retraits WHERE statut='en_attente'").fetchone()["n"]
+    actifs_7j = conn.execute("""
+        SELECT COUNT(DISTINCT user_id) as n FROM logs
+        WHERE date_action > datetime('now', '-7 days')
+    """).fetchone()["n"]
     conn.close()
-    return {"total": total, "actifs": actifs, "bannis": bannis,
-            "parrainages": parrainages, "retraits_attente": retraits_att}
+    return {
+        "total": total, "actifs": actifs, "bannis": bannis,
+        "parrainages": parrainages, "retraits_attente": retraits_att,
+        "total_gains": total_gains, "total_retraits": total_retraits,
+        "actifs_7j": actifs_7j
+    }
 
 def get_blacklist():
     conn = get_connection()
@@ -162,8 +193,8 @@ def add_parrainage(parrain_id, filleul_id):
     conn.close()
 
 def count_parrainages_heure(parrain_id):
+    from datetime import timedelta
     conn = get_connection()
-    from datetime import datetime, timedelta
     une_heure = (datetime.now() - timedelta(hours=1)).strftime("%Y-%m-%d %H:%M:%S")
     row = conn.execute("""
         SELECT COUNT(*) as n FROM parrainages
@@ -203,6 +234,17 @@ def update_retrait_statut(retrait_id, statut):
     conn.commit()
     conn.close()
 
+def get_retraits_en_attente():
+    conn = get_connection()
+    rows = conn.execute("""
+        SELECT r.*, u.full_name, u.username FROM retraits r
+        LEFT JOIN users u ON r.user_id = u.user_id
+        WHERE r.statut = 'en_attente'
+        ORDER BY r.date_demande ASC
+    """).fetchall()
+    conn.close()
+    return rows
+
 def add_log(user_id, action, details="", suspect=False):
     conn = get_connection()
     conn.execute("INSERT INTO logs (user_id, action, details, suspect, date_action) VALUES (?, ?, ?, ?, ?)",
@@ -224,6 +266,58 @@ def clear_logs():
     conn.execute("DELETE FROM logs")
     conn.commit()
     conn.close()
+
+def get_parametre(cle, defaut=None):
+    conn = get_connection()
+    row = conn.execute("SELECT valeur FROM parametres WHERE cle = ?", (cle,)).fetchone()
+    conn.close()
+    return row["valeur"] if row else defaut
+
+def set_parametre(cle, valeur):
+    conn = get_connection()
+    conn.execute("INSERT OR REPLACE INTO parametres (cle, valeur) VALUES (?, ?)", (cle, str(valeur)))
+    conn.commit()
+    conn.close()
+
+def is_numero_blackliste(numero):
+    conn = get_connection()
+    row = conn.execute("SELECT * FROM blacklist_tel WHERE numero = ?", (numero,)).fetchone()
+    conn.close()
+    return row is not None
+
+def add_numero_blacklist(numero, raison=""):
+    conn = get_connection()
+    conn.execute("INSERT OR REPLACE INTO blacklist_tel VALUES (?, ?, ?)", (numero, raison, _now()))
+    conn.commit()
+    conn.close()
+
+def is_pays_blackliste(pays):
+    conn = get_connection()
+    rows = conn.execute("SELECT pays FROM blacklist_pays").fetchall()
+    conn.close()
+    pays_lower = pays.lower()
+    for row in rows:
+        if row["pays"].lower() in pays_lower or pays_lower in row["pays"].lower():
+            return True
+    return False
+
+def add_pays_blacklist(pays, raison=""):
+    conn = get_connection()
+    conn.execute("INSERT OR REPLACE INTO blacklist_pays VALUES (?, ?, ?)", (pays, raison, _now()))
+    conn.commit()
+    conn.close()
+
+def remove_pays_blacklist(pays):
+    conn = get_connection()
+    conn.execute("DELETE FROM blacklist_pays WHERE pays LIKE ?", (f"%{pays}%",))
+    conn.commit()
+    conn.close()
+
+def get_pays_blacklist():
+    conn = get_connection()
+    rows = conn.execute("SELECT * FROM blacklist_pays").fetchall()
+    conn.close()
+    return rows
 
 def _now():
     return datetime.now().strftime("%Y-%m-%d %H:%M:%S")

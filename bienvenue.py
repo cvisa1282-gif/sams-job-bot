@@ -1,8 +1,10 @@
 from telegram import Update, InlineKeyboardButton, InlineKeyboardMarkup
 from telegram.ext import ContextTypes
-from database import get_user, create_user, update_solde, get_user_by_ref, add_parrainage, count_parrainages_heure, is_banni
-from securite import check_flood, log_action, is_nom_suspect
-from menu_buttons import get_menu_keyboard
+from database import (get_user, create_user, update_solde, get_user_by_ref,
+                      add_parrainage, count_parrainages_heure, is_banni,
+                      get_parametre, is_pays_blackliste)
+from securite import check_flood, log_action, is_nom_suspect, is_bot_detecte
+from clavier import get_menu_keyboard
 import os
 
 ADMIN_ID = int(os.environ.get("ADMIN_ID", "6610074482"))
@@ -32,6 +34,9 @@ async def cmd_start(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if is_nom_suspect(user.first_name or "", user.username or ""):
         log_action(user_id, "NOM_SUSPECT", f"Nom: {user.first_name} | @{user.username}", suspect=True)
 
+    if is_bot_detecte(user.username or ""):
+        log_action(user_id, "BOT_DETECTE", f"@{user.username}", suspect=True)
+
     try:
         member = await context.bot.get_chat_member(CHANNEL_ID, user_id)
         if member.status in ["left", "kicked", "banned"]:
@@ -59,8 +64,7 @@ async def cmd_start(update: Update, context: ContextTypes.DEFAULT_TYPE):
             if parrain and parrain["user_id"] != user_id:
                 parrain_id = parrain["user_id"]
                 if count_parrainages_heure(parrain_id) >= MAX_PARRAINAGES_PAR_HEURE:
-                    log_action(parrain_id, "LIMITE_PARRAINAGE",
-                               f"Trop de filleuls en 1h. Filleul tenté: {user_id}", suspect=True)
+                    log_action(parrain_id, "LIMITE_PARRAINAGE", f"Filleul tenté: {user_id}", suspect=True)
                     parrain_id = None
                 else:
                     update_solde(parrain_id, BONUS_PARRAIN)
@@ -69,9 +73,7 @@ async def cmd_start(update: Update, context: ContextTypes.DEFAULT_TYPE):
                     try:
                         await context.bot.send_message(
                             parrain_id,
-                            f"🎉 *Nouveau filleul !*\n\n"
-                            f"Un ami vient de vous rejoindre.\n"
-                            f"💰 +{BONUS_PARRAIN} FCFA ajoutés à votre solde !",
+                            f"🎉 *Nouveau filleul !*\n\nUn ami vient de vous rejoindre.\n💰 +{BONUS_PARRAIN} FCFA ajoutés !",
                             parse_mode="Markdown"
                         )
                     except Exception:
@@ -90,11 +92,7 @@ async def cmd_start(update: Update, context: ContextTypes.DEFAULT_TYPE):
         try:
             await context.bot.send_message(
                 ADMIN_ID,
-                f"👤 *Nouvel inscrit*\n"
-                f"ID: `{user_id}`\n"
-                f"Nom: {user.full_name}\n"
-                f"@{user.username or 'N/A'}\n"
-                f"Parrain: {parrain_id or 'Aucun'}",
+                f"👤 *Nouvel inscrit*\nID: `{user_id}`\nNom: {user.full_name}\n@{user.username or 'N/A'}\nParrain: {parrain_id or 'Aucun'}",
                 parse_mode="Markdown"
             )
         except Exception:
@@ -102,7 +100,7 @@ async def cmd_start(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
         message_accueil = (
             f"🎊 *Bienvenue sur SAMS-JOB, {user.first_name} !*\n\n"
-            f"💼 Gagnez de l'argent facilement en parrainant vos amis !\n\n"
+            f"💼 Gagnez de l'argent en parrainant vos amis !\n\n"
             f"━━━━━━━━━━━━━━━━━━━━\n"
             f"💰 *Comment ça marche ?*\n"
             f"• Partagez votre lien unique\n"
@@ -110,23 +108,17 @@ async def cmd_start(update: Update, context: ContextTypes.DEFAULT_TYPE):
             f"• Votre ami reçoit +{BONUS_FILLEUL} FCFA de bienvenue\n"
             f"• Retrait dès 5 000 FCFA\n"
             f"━━━━━━━━━━━━━━━━━━━━\n"
-            f"{bonus_txt}\n\n"
-            f"Choisissez une option ci-dessous 👇"
+            f"{bonus_txt}\n\nChoisissez une option ci-dessous 👇"
         )
     else:
         from database import get_solde
         solde = get_solde(user_id)
         message_accueil = (
             f"👋 *Bon retour, {user.first_name} !*\n\n"
-            f"💰 Votre solde : *{solde:.0f} FCFA*\n\n"
-            f"Que souhaitez-vous faire ? 👇"
+            f"💰 Votre solde : *{solde:.0f} FCFA*\n\nQue souhaitez-vous faire ? 👇"
         )
 
-    await update.message.reply_text(
-        message_accueil,
-        reply_markup=get_menu_keyboard(),
-        parse_mode="Markdown"
-    )
+    await update.message.reply_text(message_accueil, reply_markup=get_menu_keyboard(), parse_mode="Markdown")
 
 async def check_join_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
     query = update.callback_query

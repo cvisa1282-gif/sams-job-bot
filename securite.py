@@ -5,13 +5,9 @@ import os
 
 ADMIN_ID = int(os.environ.get("ADMIN_ID", "6610074482"))
 ANTI_FLOOD_SECONDES = 3
-
 _last_action = {}
-
-MOTS_SUSPECTS = [
-    "bot", "robot", "auto", "spam", "fake", "test", "admin",
-    "hack", "cheat", "scam", "000", "111", "999"
-]
+MOTS_SUSPECTS = ["bot","robot","auto","spam","fake","test","hack","cheat","scam","000","111","999"]
+BOT_PATTERNS = [r'^\d{6,}$', r'user\d{4,}', r'bot\d+']
 
 def check_flood(user_id: int) -> bool:
     now = time.time()
@@ -28,6 +24,14 @@ def is_nom_suspect(nom: str, username: str) -> bool:
             return True
     if re.search(r'\d{5,}', username):
         return True
+    return False
+
+def is_bot_detecte(username: str) -> bool:
+    if not username:
+        return False
+    for pattern in BOT_PATTERNS:
+        if re.search(pattern, username.lower()):
+            return True
     return False
 
 def log_action(user_id: int, action: str, details: str = "", suspect: bool = False):
