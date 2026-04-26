@@ -42,7 +42,17 @@ def run_bot():
         logger.info("✅ Bot démarré avec succès !")
         await app.initialize()
         await app.start()
-        await app.updater.start_polling(drop_pending_updates=True)
+        async def start():
+    app = Application.builder().token(TOKEN).build()
+    register_all_handlers(app)
+    logger.info("✅ Bot démarré avec succès !")
+    await app.initialize()
+    await app.start()
+    await app.updater.start_polling(
+        drop_pending_updates=True,
+        allowed_updates=["message", "callback_query"]
+    )
+    await asyncio.Event().wait()
         await asyncio.Event().wait()
     asyncio.run(start())
 
