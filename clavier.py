@@ -5,6 +5,8 @@ def get_menu_keyboard():
         ["💰 SOLDE", "🔗 PARRAINAGE"],
         ["💸 RETRAIT", "🚨 SIGNALER"],
         ["🏆 CLASSEMENT", "📊 MES STATS"],
-        ["📍 MON RANG", "📩 CONTACT"]
+        ["📍 MON RANG", "🎯 OBJECTIF"],
+        ["📜 CONDITIONS", "📞 SUPPORT"],
+        ["📩 CONTACT"]
     ]
     return ReplyKeyboardMarkup(keyboard, resize_keyboard=True)

@@ -119,3 +119,146 @@ async def btn_mes_stats(update: Update, context: ContextTypes.DEFAULT_TYPE):
     )
     log_action(user_id, "VU_STATS")
     await update.message.reply_text(txt, parse_mode="Markdown")
+
+# ─── FONCTION 34 : OBJECTIF ───────────────────────────────────────
+async def btn_objectif(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    user_id = update.effective_user.id
+    if is_banni(user_id):
+        return
+    if not check_flood(user_id):
+        await update.message.reply_text("⏳ Attendez quelques secondes.")
+        return
+    conn = sqlite3.connect(DB_PATH)
+    conn.row_factory = sqlite3.Row
+    objectif = conn.execute("SELECT valeur FROM parametres WHERE cle = ?", (f"objectif_{user_id}",)).fetchone()
+    conn.close()
+    solde = get_solde(user_id)
+    if objectif:
+        montant_obj = float(objectif["valeur"])
+        progression = min(100, int((solde / montant_obj) * 100))
+        barres = "🟩" * (progression // 10) + "⬜" * (10 - progression // 10)
+        if solde >= montant_obj:
+            txt = (
+                f"🎯 *VOTRE OBJECTIF*\n\n"
+                f"🎊 *FÉLICITATIONS !*\n"
+                f"Vous avez atteint votre objectif de *{montant_obj:.0f} FCFA* !\n\n"
+                f"💰 Solde actuel : *{solde:.0f} FCFA*\n\n"
+                f"Fixez un nouvel objectif !\n"
+                f"Tapez le montant souhaité :"
+            )
+            from database import set_parametre
+            set_parametre(f"objectif_{user_id}", "0")
+        else:
+            manque = montant_obj - solde
+            txt = (
+                f"🎯 *VOTRE OBJECTIF*\n\n"
+                f"💵 Objectif : *{montant_obj:.0f} FCFA*\n"
+                f"💰 Solde actuel : *{solde:.0f} FCFA*\n"
+                f"📉 Il manque : *{manque:.0f} FCFA*\n\n"
+                f"📊 Progression :\n{barres} *{progression}%*\n\n"
+                f"⚠️ *Atteignez votre objectif avant de retirer !*\n\n"
+                f"Voulez-vous changer votre objectif ?\nTapez le nouveau montant ou /annuler :"
+            )
+    else:
+        txt = (
+            f"🎯 *FIXER UN OBJECTIF*\n\n"
+            f"💰 Solde actuel : *{solde:.0f} FCFA*\n\n"
+            f"Tapez le montant que vous souhaitez atteindre :\n"
+            f"_(ex: 10000)_\n\n"
+            f"⚠️ Tant que vous n'aurez pas atteint cet objectif,\n"
+            f"vous ne pourrez pas effectuer de retrait !"
+        )
+    context.user_data["attente_objectif"] = True
+    log_action(user_id, "VU_OBJECTIF")
+    await update.message.reply_text(txt, parse_mode="Markdown")
+
+async def btn_objectif_saisie(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    user_id = update.effective_user.id
+    if not context.user_data.get("attente_objectif"):
+        return
+    try:
+        montant = float(update.message.text.strip().replace(" ", "").replace("fcfa", "").replace("FCFA", ""))
+        if montant < 5000:
+            await update.message.reply_text("❌ L'objectif minimum est 5 000 FCFA. Réessayez :")
+            return
+        from database import set_parametre
+        set_parametre(f"objectif_{user_id}", str(montant))
+        context.user_data.pop("attente_objectif", None)
+        solde = get_solde(user_id)
+        progression = min(100, int((solde / montant) * 100))
+        barres = "🟩" * (progression // 10) + "⬜" * (10 - progression // 10)
+        await update.message.reply_text(
+            f"✅ *Objectif fixé !*\n\n"
+            f"🎯 Objectif : *{montant:.0f} FCFA*\n"
+            f"💰 Solde actuel : *{solde:.0f} FCFA*\n"
+            f"📊 Progression : {barres} *{progression}%*\n\n"
+            f"💪 Parrainez pour atteindre votre objectif !",
+            parse_mode="Markdown"
+        )
+    except ValueError:
+        await update.message.reply_text("❌ Montant invalide. Entrez un nombre :")
+
+# ─── FONCTION 43 : CONDITIONS ─────────────────────────────────────
+async def btn_conditions(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    user_id = update.effective_user.id
+    if is_banni(user_id):
+        return
+    if not check_flood(user_id):
+        await update.message.reply_text("⏳ Attendez quelques secondes.")
+        return
+    txt = (
+        f"📜 *CONDITIONS D'UTILISATION SAMS-JOB*\n\n"
+        f"━━━━━━━━━━━━━━━━━━━━\n"
+        f"✅ *CE QUI EST AUTORISÉ*\n"
+        f"• Parrainer des amis réels\n"
+        f"• Retirer ses gains légitimes\n"
+        f"• Utiliser un seul compte\n"
+        f"• Contacter le support en cas de problème\n\n"
+        f"━━━━━━━━━━━━━━━━━━━━\n"
+        f"❌ *CE QUI EST INTERDIT*\n"
+        f"• Créer plusieurs comptes\n"
+        f"• Utiliser des bots ou scripts\n"
+        f"• Faux parrainages\n"
+        f"• Numéros de retrait invalides\n"
+        f"• Toute tentative de fraude\n\n"
+        f"━━━━━━━━━━━━━━━━━━━━\n"
+        f"⚖️ *SANCTIONS*\n"
+        f"• Bannissement définitif\n"
+        f"• Solde annulé sans remboursement\n"
+        f"• Signalement aux autorités si nécessaire\n\n"
+        f"━━━━━━━━━━━━━━━━━━━━\n"
+        f"📅 Dernière mise à jour : Avril 2026\n\n"
+        f"En utilisant ce bot, vous acceptez ces conditions."
+    )
+    log_action(user_id, "VU_CONDITIONS")
+    await update.message.reply_text(txt, parse_mode="Markdown")
+
+# ─── FONCTION 46 : SUPPORT WHATSAPP ──────────────────────────────
+async def btn_support(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    user_id = update.effective_user.id
+    if is_banni(user_id):
+        return
+    if not check_flood(user_id):
+        await update.message.reply_text("⏳ Attendez quelques secondes.")
+        return
+    from telegram import InlineKeyboardButton, InlineKeyboardMarkup
+    keyboard = [[
+        InlineKeyboardButton(
+            "💬 Contacter sur WhatsApp",
+            url="https://wa.me/22899314796"
+        )
+    ]]
+    txt = (
+        f"📞 *SUPPORT PRIORITAIRE*\n\n"
+        f"Vous avez un problème urgent ?\n"
+        f"Contactez directement l'administrateur sur WhatsApp !\n\n"
+        f"⏰ Disponible : *8h - 22h*\n"
+        f"📱 Numéro : *+228 99 31 47 96*\n\n"
+        f"Cliquez sur le bouton ci-dessous :"
+    )
+    log_action(user_id, "SUPPORT_WHATSAPP")
+    await update.message.reply_text(
+        txt,
+        reply_markup=InlineKeyboardMarkup(keyboard),
+        parse_mode="Markdown"
+    )

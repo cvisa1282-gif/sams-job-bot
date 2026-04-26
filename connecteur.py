@@ -24,9 +24,17 @@ from admin import (
     cmd_fraudes, cmd_doublons, cmd_ban_tel, cmd_ban_pays,
     cmd_unban_pays, cmd_liste_pays, cmd_set_limite, cmd_audit,
     cmd_broadcast_photo, cmd_programme, cmd_annonce,
-    cmd_maintenance, cmd_chercher, cmd_filleuls
+    cmd_maintenance, cmd_chercher, cmd_filleuls,
+    cmd_freeze, cmd_unfreeze, cmd_bonus_tous, cmd_transfert,
+    cmd_retrait_notif, cmd_top_parrains, callback_bonus_top3,
+    cmd_alerte_frequence, cmd_limite_horaire, cmd_liste_alertes,
+    callback_sanction, cmd_autoban, cmd_reset_attempts,
+    cmd_sondage, cmd_feliciter
 )
-from fonctions_user import btn_classement, btn_mon_rang, btn_mes_stats
+from fonctions_user import (
+    btn_classement, btn_mon_rang, btn_mes_stats,
+    btn_objectif, btn_objectif_saisie, btn_conditions, btn_support
+)
 
 def register_all_handlers(application):
     application.add_handler(CommandHandler("start", cmd_start))
@@ -67,16 +75,28 @@ def register_all_handlers(application):
     )
     application.add_handler(contact_conv)
 
+    # Boutons utilisateur
     application.add_handler(MessageHandler(filters.Regex("^💰 SOLDE$"), btn_solde))
     application.add_handler(MessageHandler(filters.Regex("^🔗 PARRAINAGE$"), btn_parrainage))
     application.add_handler(MessageHandler(filters.Regex("^🏆 CLASSEMENT$"), btn_classement))
     application.add_handler(MessageHandler(filters.Regex("^📊 MES STATS$"), btn_mes_stats))
     application.add_handler(MessageHandler(filters.Regex("^📍 MON RANG$"), btn_mon_rang))
+    application.add_handler(MessageHandler(filters.Regex("^🎯 OBJECTIF$"), btn_objectif))
+    application.add_handler(MessageHandler(filters.Regex("^📜 CONDITIONS$"), btn_conditions))
+    application.add_handler(MessageHandler(filters.Regex("^📞 SUPPORT$"), btn_support))
+    application.add_handler(MessageHandler(
+        filters.TEXT & ~filters.COMMAND & filters.Regex(r"^\d+$"),
+        btn_objectif_saisie
+    ))
 
+    # Callbacks inline
     application.add_handler(CallbackQueryHandler(check_join_callback, pattern="^check_join$"))
     application.add_handler(CallbackQueryHandler(callback_valider_retrait, pattern="^valider_"))
     application.add_handler(CallbackQueryHandler(callback_refuser_retrait, pattern="^refuser_"))
+    application.add_handler(CallbackQueryHandler(callback_bonus_top3, pattern="^bonus_top3_"))
+    application.add_handler(CallbackQueryHandler(callback_sanction, pattern="^sanction_"))
 
+    # Commandes admin de base
     application.add_handler(CommandHandler("stats",          cmd_stats))
     application.add_handler(CommandHandler("broadcast",      cmd_broadcast))
     application.add_handler(CommandHandler("ban",            cmd_ban))
@@ -110,5 +130,20 @@ def register_all_handlers(application):
     application.add_handler(CommandHandler("maintenance",    cmd_maintenance))
     application.add_handler(CommandHandler("chercher",       cmd_chercher))
     application.add_handler(CommandHandler("filleuls",       cmd_filleuls))
+
+    # Nouvelles commandes admin
+    application.add_handler(CommandHandler("freeze",         cmd_freeze))
+    application.add_handler(CommandHandler("unfreeze",       cmd_unfreeze))
+    application.add_handler(CommandHandler("bonustous",      cmd_bonus_tous))
+    application.add_handler(CommandHandler("transfert",      cmd_transfert))
+    application.add_handler(CommandHandler("payenotif",      cmd_retrait_notif))
+    application.add_handler(CommandHandler("topparrains",    cmd_top_parrains))
+    application.add_handler(CommandHandler("alertefreq",     cmd_alerte_frequence))
+    application.add_handler(CommandHandler("limitehoraire",  cmd_limite_horaire))
+    application.add_handler(CommandHandler("listealertes",   cmd_liste_alertes))
+    application.add_handler(CommandHandler("autoban",        cmd_autoban))
+    application.add_handler(CommandHandler("resetattempts",  cmd_reset_attempts))
+    application.add_handler(CommandHandler("sondage",        cmd_sondage))
+    application.add_handler(CommandHandler("feliciter",      cmd_feliciter))
 
     print("✅ Tous les handlers enregistrés.")

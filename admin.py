@@ -647,3 +647,476 @@ async def cmd_filleuls(update: Update, context: ContextTypes.DEFAULT_TYPE):
     for f in filleuls[:20]:
         txt += f"• *{f['full_name'] or 'N/A'}* | ID: `{f['filleul_id']}`\n📅 {f['date_action'][:10] if f['date_action'] else '?'}\n\n"
     await update.message.reply_text(txt, parse_mode="Markdown")
+
+# ─── ADMIN 4 : FREEZE/UNFREEZE ───────────────────────────────────
+@admin_only
+async def cmd_freeze(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    if not context.args:
+        await update.message.reply_text("Usage : /freeze USER_ID raison")
+        return
+    try:
+        user_id = int(context.args[0])
+        raison = " ".join(context.args[1:]) or "Compte gelé temporairement"
+    except ValueError:
+        await update.message.reply_text("❌ ID invalide.")
+        return
+    set_parametre(f"freeze_{user_id}", "1")
+    set_parametre(f"freeze_raison_{user_id}", raison)
+    log_action(user_id, "FREEZE", raison)
+    await update.message.reply_text(f"🧊 Compte `{user_id}` gelé.\nRaison : {raison}", parse_mode="Markdown")
+    try:
+        await context.bot.send_message(
+            user_id,
+            f"🧊 *Votre compte est temporairement gelé*\n\n"
+            f"📝 Raison : _{raison}_\n\n"
+            f"Contactez l'administrateur pour plus d'informations.",
+            parse_mode="Markdown"
+        )
+    except Exception:
+        pass
+
+@admin_only
+async def cmd_unfreeze(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    if not context.args:
+        await update.message.reply_text("Usage : /unfreeze USER_ID")
+        return
+    try:
+        user_id = int(context.args[0])
+    except ValueError:
+        await update.message.reply_text("❌ ID invalide.")
+        return
+    set_parametre(f"freeze_{user_id}", "0")
+    log_action(user_id, "UNFREEZE", "Compte dégelé")
+    await update.message.reply_text(f"✅ Compte `{user_id}` dégelé.", parse_mode="Markdown")
+    try:
+        await context.bot.send_message(
+            user_id,
+            "✅ *Votre compte a été dégelé !*\n\nVous pouvez à nouveau utiliser toutes les fonctions.",
+            parse_mode="Markdown"
+        )
+    except Exception:
+        pass
+
+# ─── ADMIN 5 : BONUS TOUS ─────────────────────────────────────────
+@admin_only
+async def cmd_bonus_tous(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    if not context.args:
+        await update.message.reply_text("Usage : /bonustous MONTANT")
+        return
+    try:
+        montant = float(context.args[0])
+    except ValueError:
+        await update.message.reply_text("❌ Montant invalide.")
+        return
+    users = get_all_users()
+    ok = 0
+    for uid in users:
+        try:
+            update_solde(uid, montant)
+            await context.bot.send_message(
+                uid,
+                f"🎁 *BONUS SURPRISE !*\n\n"
+                f"💰 +*{montant:.0f} FCFA* viennent d'être ajoutés à votre solde !\n\n"
+                f"🎊 Cadeau de l'administrateur. Merci de votre fidélité !",
+                parse_mode="Markdown"
+            )
+            ok += 1
+        except Exception:
+            pass
+    await update.message.reply_text(f"✅ Bonus de {montant:.0f} FCFA envoyé à {ok} utilisateurs.")
+
+# ─── ADMIN 13 : TRANSFERT ─────────────────────────────────────────
+@admin_only
+async def cmd_transfert(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    if len(context.args) < 3:
+        await update.message.reply_text("Usage : /transfert ID1 ID2 MONTANT\n(Transfère de ID1 vers ID2)")
+        return
+    try:
+        id1 = int(context.args[0])
+        id2 = int(context.args[1])
+        montant = float(context.args[2])
+    except ValueError:
+        await update.message.reply_text("❌ Paramètres invalides.")
+        return
+    solde1 = get_solde(id1)
+    if solde1 < montant:
+        await update.message.reply_text(f"❌ Solde insuffisant pour `{id1}` ({solde1:.0f} FCFA).", parse_mode="Markdown")
+        return
+    update_solde(id1, -montant)
+    update_solde(id2, montant)
+    log_action(id1, "TRANSFERT_DEBIT", f"-{montant} FCFA vers {id2}")
+    log_action(id2, "TRANSFERT_CREDIT", f"+{montant} FCFA de {id1}")
+    await update.message.reply_text(
+        f"✅ Transfert effectué !\n`{id1}` → `{id2}` : *{montant:.0f} FCFA*",
+        parse_mode="Markdown"
+    )
+    try:
+        await context.bot.send_message(id1, f"💸 *{montant:.0f} FCFA* ont été transférés de votre compte.", parse_mode="Markdown")
+        await context.bot.send_message(id2, f"💰 *+{montant:.0f} FCFA* ont été ajoutés à votre compte.", parse_mode="Markdown")
+    except Exception:
+        pass
+
+# ─── ADMIN 17 : RETRAIT AVEC NOTIFICATION ────────────────────────
+@admin_only
+async def cmd_retrait_notif(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """Valider un retrait et notifier avec message personnalisé"""
+    if len(context.args) < 2:
+        await update.message.reply_text("Usage : /payenotif RETRAIT_ID message_pour_user")
+        return
+    try:
+        retrait_id = int(context.args[0])
+        message = " ".join(context.args[1:])
+    except ValueError:
+        await update.message.reply_text("❌ ID invalide.")
+        return
+    conn = sqlite3.connect(DB_PATH)
+    conn.row_factory = sqlite3.Row
+    r = conn.execute("SELECT * FROM retraits WHERE id = ?", (retrait_id,)).fetchone()
+    conn.close()
+    if not r:
+        await update.message.reply_text("❌ Retrait introuvable.")
+        return
+    update_retrait_statut(retrait_id, "paye")
+    log_action(r["user_id"], "RETRAIT_PAYE_NOTIF", f"{r['montant']} FCFA")
+    await update.message.reply_text(f"✅ Retrait #{retrait_id} marqué payé avec notification.")
+    try:
+        await context.bot.send_message(
+            r["user_id"],
+            f"💸 *RETRAIT EFFECTUÉ*\n\n"
+            f"✅ Votre retrait de *{r['montant']:.0f} FCFA* a été envoyé !\n\n"
+            f"📝 Message de l'admin :\n_{message}_\n\n"
+            f"Merci de votre confiance ! 🙏",
+            parse_mode="Markdown"
+        )
+    except Exception:
+        pass
+
+# ─── ADMIN 24 : TOP PARRAINS + BONUS VIP ────────────────────────
+@admin_only
+async def cmd_top_parrains(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    conn = sqlite3.connect(DB_PATH)
+    conn.row_factory = sqlite3.Row
+    top = conn.execute("""
+        SELECT p.parrain_id, COUNT(*) as nb, u.full_name, u.username, u.solde
+        FROM parrainages p
+        LEFT JOIN users u ON p.parrain_id = u.user_id
+        GROUP BY p.parrain_id
+        ORDER BY nb DESC LIMIT 20
+    """).fetchall()
+    conn.close()
+    if not top:
+        await update.message.reply_text("❌ Aucun parrainage.")
+        return
+    txt = "🏆 *TOP 20 PARRAINS*\n\n"
+    medailles = ["🥇","🥈","🥉"]
+    for i, row in enumerate(top):
+        med = medailles[i] if i < 3 else f"{i+1}."
+        txt += f"{med} *{row['full_name'] or 'N/A'}* (`{row['parrain_id']}`)\n👥 {row['nb']} filleuls | 💰 {row['solde']:.0f} FCFA\n\n"
+    from telegram import InlineKeyboardButton, InlineKeyboardMarkup
+    keyboard = [
+        [InlineKeyboardButton("💰 Bonus argent au Top 3", callback_data="bonus_top3_argent")],
+        [InlineKeyboardButton("🔗 Lien VIP au Top 3", callback_data="bonus_top3_lien")]
+    ]
+    await update.message.reply_text(txt, reply_markup=InlineKeyboardMarkup(keyboard), parse_mode="Markdown")
+
+async def callback_bonus_top3(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    query = update.callback_query
+    if query.from_user.id != ADMIN_ID:
+        await query.answer("⛔ Accès refusé.", show_alert=True)
+        return
+    await query.answer()
+    conn = sqlite3.connect(DB_PATH)
+    conn.row_factory = sqlite3.Row
+    top3 = conn.execute("""
+        SELECT p.parrain_id, COUNT(*) as nb, u.full_name
+        FROM parrainages p
+        LEFT JOIN users u ON p.parrain_id = u.user_id
+        GROUP BY p.parrain_id
+        ORDER BY nb DESC LIMIT 3
+    """).fetchall()
+    conn.close()
+
+    bonus_montants = [5000, 3000, 1000]
+
+    if query.data == "bonus_top3_argent":
+        for i, row in enumerate(top3):
+            montant = bonus_montants[i]
+            update_solde(row["parrain_id"], montant)
+            log_action(row["parrain_id"], "BONUS_TOP3", f"+{montant} FCFA")
+            try:
+                await context.bot.send_message(
+                    row["parrain_id"],
+                    f"🏆 *RÉCOMPENSE TOP PARRAIN !*\n\n"
+                    f"Félicitations ! Vous êtes classé *#{i+1}* des meilleurs parrains !\n\n"
+                    f"💰 *+{montant} FCFA* ajoutés à votre solde !\n\n"
+                    f"🎊 Continuez comme ça !",
+                    parse_mode="Markdown"
+                )
+            except Exception:
+                pass
+        await query.edit_message_text(f"✅ Bonus argent envoyé au Top 3 !\n🥇 +5000 | 🥈 +3000 | 🥉 +1000 FCFA")
+
+    elif query.data == "bonus_top3_lien":
+        import random, string
+        for i, row in enumerate(top3):
+            code_vip = "VIP" + ''.join(random.choices(string.digits, k=6))
+            set_parametre(f"lien_vip_{code_vip}", str(row["parrain_id"]))
+            set_parametre(f"bonus_vip_{code_vip}", "500")
+            lien_vip = f"https://t.me/{os.environ.get('BOT_USERNAME', 'votre_bot')}?start={code_vip}"
+            log_action(row["parrain_id"], "LIEN_VIP", f"Code: {code_vip}")
+            try:
+                await context.bot.send_message(
+                    row["parrain_id"],
+                    f"👑 *LIEN VIP EXCLUSIF !*\n\n"
+                    f"Félicitations ! Vous êtes classé *#{i+1}* des meilleurs parrains !\n\n"
+                    f"🔗 Votre lien VIP spécial :\n`{lien_vip}`\n\n"
+                    f"💰 Chaque ami inscrit via ce lien = *+500 FCFA* pour vous !\n"
+                    f"👁 Ce lien est visible par tous comme lien d'élite !",
+                    parse_mode="Markdown"
+                )
+            except Exception:
+                pass
+        users = get_all_users()
+        for uid in users:
+            try:
+                await context.bot.send_message(
+                    uid,
+                    f"🏆 *NOS TOP PARRAINS ONT ÉTÉ RÉCOMPENSÉS !*\n\n"
+                    f"Les meilleurs parrains du mois ont reçu des liens VIP exclusifs !\n\n"
+                    f"💪 Parrainez plus pour faire partie du top !",
+                    parse_mode="Markdown"
+                )
+            except Exception:
+                pass
+        await query.edit_message_text("✅ Liens VIP envoyés au Top 3 et tous les utilisateurs notifiés !")
+
+# ─── ADMIN 31 : ALERTE FRÉQUENCE ─────────────────────────────────
+@admin_only
+async def cmd_alerte_frequence(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    if not context.args:
+        await update.message.reply_text("Usage : /alertefreq USER_ID")
+        return
+    try:
+        user_id = int(context.args[0])
+    except ValueError:
+        await update.message.reply_text("❌ ID invalide.")
+        return
+    conn = sqlite3.connect(DB_PATH)
+    conn.row_factory = sqlite3.Row
+    actions = conn.execute("""
+        SELECT action, COUNT(*) as nb, MIN(date_action) as debut, MAX(date_action) as fin
+        FROM logs WHERE user_id = ?
+        AND date_action > datetime('now', '-24 hours')
+        GROUP BY action ORDER BY nb DESC
+    """, (user_id,)).fetchall()
+    conn.close()
+    if not actions:
+        await update.message.reply_text(f"✅ Aucune activité suspecte pour `{user_id}`.", parse_mode="Markdown")
+        return
+    txt = f"⚡ *FRÉQUENCE D'ACTIONS — `{user_id}`*\n\n"
+    for a in actions:
+        txt += f"• {a['action']} : *{a['nb']} fois* en 24h\n"
+    await update.message.reply_text(txt, parse_mode="Markdown")
+
+# ─── ADMIN 32 : LIMITE HORAIRE ────────────────────────────────────
+@admin_only
+async def cmd_limite_horaire(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    if not context.args:
+        actuel = get_parametre("limite_horaire_globale", "Non définie")
+        await update.message.reply_text(
+            f"💰 Limite horaire actuelle : *{actuel} FCFA*\n\nUsage : /limitehoraire MONTANT",
+            parse_mode="Markdown"
+        )
+        return
+    try:
+        montant = float(context.args[0])
+    except ValueError:
+        await update.message.reply_text("❌ Montant invalide.")
+        return
+    set_parametre("limite_horaire_globale", str(montant))
+    await update.message.reply_text(f"✅ Limite horaire globale fixée à *{montant:.0f} FCFA*.", parse_mode="Markdown")
+
+# ─── ADMIN 34 : LISTE ALERTES + SANCTIONS ───────────────────────
+@admin_only
+async def cmd_liste_alertes(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    conn = sqlite3.connect(DB_PATH)
+    conn.row_factory = sqlite3.Row
+    suspects = conn.execute("""
+        SELECT user_id, COUNT(*) as nb, MAX(date_action) as derniere
+        FROM logs WHERE suspect = 1
+        GROUP BY user_id ORDER BY nb DESC LIMIT 15
+    """).fetchall()
+    conn.close()
+    if not suspects:
+        await update.message.reply_text("✅ Aucune alerte active.")
+        return
+    txt = "🚨 *LISTE DES UTILISATEURS EN ALERTE*\n\n"
+    for s in suspects:
+        txt += f"• `{s['user_id']}` — {s['nb']} alertes | Dernière : {s['derniere'][:16]}\n"
+    from telegram import InlineKeyboardButton, InlineKeyboardMarkup
+    keyboard = [
+        [InlineKeyboardButton("💸 Sanctionner (retrait solde)", callback_data="sanction_retrait")],
+        [InlineKeyboardButton("🔒 Sanctionner (bloquer retraits)", callback_data="sanction_bloquer")],
+        [InlineKeyboardButton("🧊 Sanctionner (geler solde)", callback_data="sanction_geler")]
+    ]
+    await update.message.reply_text(txt, reply_markup=InlineKeyboardMarkup(keyboard), parse_mode="Markdown")
+
+async def callback_sanction(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    query = update.callback_query
+    if query.from_user.id != ADMIN_ID:
+        await query.answer("⛔ Accès refusé.", show_alert=True)
+        return
+    await query.answer()
+    conn = sqlite3.connect(DB_PATH)
+    conn.row_factory = sqlite3.Row
+    suspects = conn.execute("""
+        SELECT user_id, COUNT(*) as nb FROM logs
+        WHERE suspect = 1 GROUP BY user_id ORDER BY nb DESC LIMIT 15
+    """).fetchall()
+    conn.close()
+
+    if query.data == "sanction_retrait":
+        for s in suspects:
+            uid = s["user_id"]
+            solde = get_solde(uid)
+            penalite = min(solde, solde * 0.5)
+            if penalite > 0:
+                update_solde(uid, -penalite)
+                log_action(uid, "SANCTION_RETRAIT", f"-{penalite:.0f} FCFA")
+                try:
+                    await context.bot.send_message(uid, f"⚠️ *SANCTION*\n\nActivité suspecte détectée.\n💸 *{penalite:.0f} FCFA* retirés de votre solde.", parse_mode="Markdown")
+                except Exception:
+                    pass
+        await query.edit_message_text("✅ Sanction retrait appliquée à tous les suspects.")
+
+    elif query.data == "sanction_bloquer":
+        for s in suspects:
+            uid = s["user_id"]
+            set_parametre(f"retraits_bloques_user_{uid}", "1")
+            log_action(uid, "SANCTION_BLOCAGE", "Retraits bloqués")
+            try:
+                await context.bot.send_message(uid, "⚠️ *SANCTION*\n\nVos retraits ont été temporairement bloqués suite à une activité suspecte.", parse_mode="Markdown")
+            except Exception:
+                pass
+        await query.edit_message_text("✅ Retraits bloqués pour tous les suspects.")
+
+    elif query.data == "sanction_geler":
+        for s in suspects:
+            uid = s["user_id"]
+            set_parametre(f"freeze_{uid}", "1")
+            set_parametre(f"freeze_raison_{uid}", "Activité suspecte détectée")
+            log_action(uid, "SANCTION_GEL", "Solde gelé")
+            try:
+                await context.bot.send_message(uid, "🧊 *SANCTION*\n\nVotre solde a été gelé suite à une activité suspecte.\nContactez l'administrateur.", parse_mode="Markdown")
+            except Exception:
+                pass
+        await query.edit_message_text("✅ Soldes gelés pour tous les suspects.")
+
+# ─── ADMIN 35 : AUTOBAN ──────────────────────────────────────────
+@admin_only
+async def cmd_autoban(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    if not context.args:
+        seuil = get_parametre("autoban_seuil", "Non défini")
+        await update.message.reply_text(
+            f"🤖 Seuil autoban actuel : *{seuil} alertes*\n\nUsage : /autoban SEUIL\nExemple : /autoban 10",
+            parse_mode="Markdown"
+        )
+        return
+    try:
+        seuil = int(context.args[0])
+    except ValueError:
+        await update.message.reply_text("❌ Seuil invalide.")
+        return
+    set_parametre("autoban_seuil", str(seuil))
+    conn = sqlite3.connect(DB_PATH)
+    conn.row_factory = sqlite3.Row
+    suspects = conn.execute("""
+        SELECT user_id, COUNT(*) as nb FROM logs
+        WHERE suspect = 1 GROUP BY user_id HAVING nb >= ?
+    """, (seuil,)).fetchall()
+    conn.close()
+    banni_count = 0
+    for s in suspects:
+        uid = s["user_id"]
+        if not is_banni(uid):
+            set_banni(uid, True, f"AutoBan : {s['nb']} alertes")
+            log_action(uid, "AUTOBAN", f"{s['nb']} alertes")
+            banni_count += 1
+            try:
+                await context.bot.send_message(uid, "🚫 Votre compte a été suspendu automatiquement.")
+            except Exception:
+                pass
+    await update.message.reply_text(
+        f"✅ Seuil autoban fixé à *{seuil}* alertes.\n"
+        f"🚫 *{banni_count}* comptes bannis automatiquement.",
+        parse_mode="Markdown"
+    )
+
+# ─── ADMIN 38 : RESET TENTATIVES ─────────────────────────────────
+@admin_only
+async def cmd_reset_attempts(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    if not context.args:
+        await update.message.reply_text("Usage : /resetattempts USER_ID")
+        return
+    try:
+        user_id = int(context.args[0])
+    except ValueError:
+        await update.message.reply_text("❌ ID invalide.")
+        return
+    conn = sqlite3.connect(DB_PATH)
+    conn.execute("DELETE FROM logs WHERE user_id = ? AND suspect = 1", (user_id,))
+    conn.commit()
+    conn.close()
+    log_action(user_id, "RESET_ATTEMPTS", "Alertes effacées par admin")
+    await update.message.reply_text(f"✅ Tentatives suspectes de `{user_id}` remises à zéro.", parse_mode="Markdown")
+
+# ─── ADMIN 44 : SONDAGE ──────────────────────────────────────────
+@admin_only
+async def cmd_sondage(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    if len(context.args) < 3:
+        await update.message.reply_text(
+            "Usage : /sondage question option1 option2\n"
+            "Exemple : /sondage 'Aimez-vous le bot?' Oui Non"
+        )
+        return
+    question = context.args[0]
+    options = context.args[1:]
+    users = get_all_users()
+    ok = 0
+    for uid in users:
+        try:
+            await context.bot.send_poll(
+                uid,
+                question,
+                options,
+                is_anonymous=True
+            )
+            ok += 1
+        except Exception:
+            pass
+    await update.message.reply_text(f"✅ Sondage envoyé à {ok} utilisateurs.")
+
+# ─── ADMIN 46 : FÉLICITER ─────────────────────────────────────────
+@admin_only
+async def cmd_feliciter(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    if not context.args:
+        await update.message.reply_text("Usage : /feliciter USER_ID raison")
+        return
+    try:
+        user_id = int(context.args[0])
+        raison = " ".join(context.args[1:]) or "Excellente performance !"
+    except ValueError:
+        await update.message.reply_text("❌ ID invalide.")
+        return
+    try:
+        await context.bot.send_message(
+            user_id,
+            f"🎊 *FÉLICITATIONS !*\n\n"
+            f"L'administrateur vous félicite !\n\n"
+            f"🏅 _{raison}_\n\n"
+            f"Continuez comme ça, vous êtes sur la bonne voie ! 💪",
+            parse_mode="Markdown"
+        )
+        await update.message.reply_text(f"✅ Félicitations envoyées à `{user_id}`.", parse_mode="Markdown")
+    except Exception as e:
+        await update.message.reply_text(f"❌ Erreur : {e}")
