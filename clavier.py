@@ -4,8 +4,7 @@ def get_menu_keyboard():
     keyboard = [
         ["💰 SOLDE", "🔗 PARRAINAGE"],
         ["💸 RETRAIT", "🚨 SIGNALER"],
-        ["🏆 CLASSEMENT", "📊 MES STATS"],
-        ["📍 MON RANG", "🎯 OBJECTIF"],
+        ["📊 MES STATS", "🎯 OBJECTIF"],
         ["📜 CONDITIONS", "📞 SUPPORT"],
         ["📩 CONTACT"]
     ]

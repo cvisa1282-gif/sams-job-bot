@@ -31,10 +31,7 @@ from admin import (
     callback_sanction, cmd_autoban, cmd_reset_attempts,
     cmd_sondage, cmd_feliciter
 )
-from fonctions_user import (
-    btn_classement, btn_mon_rang, btn_mes_stats,
-    btn_objectif, btn_objectif_saisie, btn_conditions, btn_support
-)
+from fonctions_user import btn_mes_stats, btn_objectif, btn_objectif_saisie, btn_conditions, btn_support
 
 def register_all_handlers(application):
     application.add_handler(CommandHandler("start", cmd_start))
@@ -75,12 +72,9 @@ def register_all_handlers(application):
     )
     application.add_handler(contact_conv)
 
-    # Boutons utilisateur
     application.add_handler(MessageHandler(filters.Regex("^💰 SOLDE$"), btn_solde))
     application.add_handler(MessageHandler(filters.Regex("^🔗 PARRAINAGE$"), btn_parrainage))
-    application.add_handler(MessageHandler(filters.Regex("^🏆 CLASSEMENT$"), btn_classement))
     application.add_handler(MessageHandler(filters.Regex("^📊 MES STATS$"), btn_mes_stats))
-    application.add_handler(MessageHandler(filters.Regex("^📍 MON RANG$"), btn_mon_rang))
     application.add_handler(MessageHandler(filters.Regex("^🎯 OBJECTIF$"), btn_objectif))
     application.add_handler(MessageHandler(filters.Regex("^📜 CONDITIONS$"), btn_conditions))
     application.add_handler(MessageHandler(filters.Regex("^📞 SUPPORT$"), btn_support))
@@ -89,14 +83,12 @@ def register_all_handlers(application):
         btn_objectif_saisie
     ))
 
-    # Callbacks inline
     application.add_handler(CallbackQueryHandler(check_join_callback, pattern="^check_join$"))
     application.add_handler(CallbackQueryHandler(callback_valider_retrait, pattern="^valider_"))
     application.add_handler(CallbackQueryHandler(callback_refuser_retrait, pattern="^refuser_"))
     application.add_handler(CallbackQueryHandler(callback_bonus_top3, pattern="^bonus_top3_"))
     application.add_handler(CallbackQueryHandler(callback_sanction, pattern="^sanction_"))
 
-    # Commandes admin de base
     application.add_handler(CommandHandler("stats",          cmd_stats))
     application.add_handler(CommandHandler("broadcast",      cmd_broadcast))
     application.add_handler(CommandHandler("ban",            cmd_ban))
@@ -130,8 +122,6 @@ def register_all_handlers(application):
     application.add_handler(CommandHandler("maintenance",    cmd_maintenance))
     application.add_handler(CommandHandler("chercher",       cmd_chercher))
     application.add_handler(CommandHandler("filleuls",       cmd_filleuls))
-
-    # Nouvelles commandes admin
     application.add_handler(CommandHandler("freeze",         cmd_freeze))
     application.add_handler(CommandHandler("unfreeze",       cmd_unfreeze))
     application.add_handler(CommandHandler("bonustous",      cmd_bonus_tous))
