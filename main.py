@@ -16,7 +16,6 @@ logging.basicConfig(
 )
 logger = logging.getLogger(__name__)
 
-# ─── Flask App ───────────────────────────────────────────────────
 flask_app = Flask(__name__)
 
 @flask_app.route("/")
@@ -34,7 +33,6 @@ def health():
 def run_flask():
     flask_app.run(host="0.0.0.0", port=PORT)
 
-# ─── Bot Telegram ────────────────────────────────────────────────
 def run_bot():
     async def start():
         app = Application.builder().token(TOKEN).build()
@@ -42,26 +40,15 @@ def run_bot():
         logger.info("✅ Bot démarré avec succès !")
         await app.initialize()
         await app.start()
-        async def start():
-    app = Application.builder().token(TOKEN).build()
-    register_all_handlers(app)
-    logger.info("✅ Bot démarré avec succès !")
-    await app.initialize()
-    await app.start()
-    await app.updater.start_polling(
-        drop_pending_updates=True,
-        allowed_updates=["message", "callback_query"]
-    )
-    await asyncio.Event().wait()
+        await app.updater.start_polling(
+            drop_pending_updates=True,
+            allowed_updates=["message", "callback_query"]
+        )
         await asyncio.Event().wait()
     asyncio.run(start())
 
-# ─── Lancement ───────────────────────────────────────────────────
 if __name__ == "__main__":
-    # Flask dans un thread séparé
     flask_thread = Thread(target=run_flask, daemon=True)
     flask_thread.start()
     logger.info(f"✅ Serveur Flask lancé sur le port {PORT}")
-
-    # Bot dans le thread principal
     run_bot()
