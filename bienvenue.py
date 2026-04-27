@@ -8,11 +8,11 @@ from clavier import get_menu_keyboard
 import os
 
 ADMIN_ID = int(os.environ.get("ADMIN_ID", "6610074482"))
-CHANNEL_ID = os.environ.get("CHANNEL_ID", "@votre_canal")
+CHANNEL_ID = os.environ.get("CHANNEL_ID", "@samuel00388")
 BONUS_PARRAIN = 300
 BONUS_FILLEUL = 150
 MAX_PARRAINAGES_PAR_HEURE = 5
-BOT_USERNAME = os.environ.get("BOT_USERNAME", "votre_bot")
+BOT_USERNAME = os.environ.get("BOT_USERNAME", "Samuel987pBot")
 
 async def cmd_start(update: Update, context: ContextTypes.DEFAULT_TYPE):
     user = update.effective_user
@@ -28,7 +28,10 @@ async def cmd_start(update: Update, context: ContextTypes.DEFAULT_TYPE):
         return
 
     if not check_flood(user_id):
-        await update.message.reply_text("⏳ Trop vite ! Attendez quelques secondes.")
+        await update.message.reply_text(
+            "⏳ *Doucement !*\n\nAttendez quelques secondes avant de réessayer.",
+            parse_mode="Markdown"
+        )
         return
 
     if is_nom_suspect(user.first_name or "", user.username or ""):
@@ -45,8 +48,10 @@ async def cmd_start(update: Update, context: ContextTypes.DEFAULT_TYPE):
                 [InlineKeyboardButton("✅ J'ai rejoint !", callback_data="check_join")]
             ]
             await update.message.reply_text(
-                "📢 *Rejoignez notre canal officiel pour utiliser le bot !*\n\n"
-                "Cliquez sur le bouton ci-dessous, puis revenez et cliquez sur ✅",
+                "📢 *Rejoignez notre canal officiel !*\n\n"
+                "Pour accéder au bot, vous devez d'abord rejoindre notre canal.\n\n"
+                "1️⃣ Cliquez sur *Rejoindre le canal*\n"
+                "2️⃣ Revenez ici et cliquez sur ✅",
                 reply_markup=InlineKeyboardMarkup(keyboard),
                 parse_mode="Markdown"
             )
@@ -73,7 +78,9 @@ async def cmd_start(update: Update, context: ContextTypes.DEFAULT_TYPE):
                     try:
                         await context.bot.send_message(
                             parrain_id,
-                            f"🎉 *Nouveau filleul !*\n\nUn ami vient de vous rejoindre.\n💰 +{BONUS_PARRAIN} FCFA ajoutés !",
+                            f"🎉 *Nouveau filleul !*\n\n"
+                            f"Un ami vient de vous rejoindre via votre lien !\n"
+                            f"💰 *+{BONUS_PARRAIN} FCFA* ajoutés à votre solde !",
                             parse_mode="Markdown"
                         )
                     except Exception:
@@ -83,7 +90,10 @@ async def cmd_start(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
         if parrain_id:
             update_solde(user_id, BONUS_FILLEUL)
-            bonus_txt = f"\n🎁 *Bonus de bienvenue :* +{BONUS_FILLEUL} FCFA"
+            bonus_txt = (
+                f"🎁 *Bonus de bienvenue :* +{BONUS_FILLEUL} FCFA\n"
+                f"_(Cadeau pour avoir rejoint via un lien de parrainage)_\n\n"
+            )
         else:
             bonus_txt = ""
 
@@ -92,33 +102,51 @@ async def cmd_start(update: Update, context: ContextTypes.DEFAULT_TYPE):
         try:
             await context.bot.send_message(
                 ADMIN_ID,
-                f"👤 *Nouvel inscrit*\nID: `{user_id}`\nNom: {user.full_name}\n@{user.username or 'N/A'}\nParrain: {parrain_id or 'Aucun'}",
+                f"👤 *Nouvel inscrit*\n"
+                f"ID: `{user_id}`\n"
+                f"Nom: {user.full_name}\n"
+                f"@{user.username or 'N/A'}\n"
+                f"Parrain: {parrain_id or 'Aucun'}",
                 parse_mode="Markdown"
             )
         except Exception:
             pass
 
         message_accueil = (
-            f"🎊 *Bienvenue sur SAMS-JOB, {user.first_name} !*\n\n"
-            f"💼 Gagnez de l'argent en parrainant vos amis !\n\n"
+            f"🌟 *Bienvenue sur SAMS-JOB, {user.first_name} !*\n\n"
+            f"💼 La plateforme qui vous permet de gagner de l'argent "
+            f"simplement en invitant vos amis !\n\n"
             f"━━━━━━━━━━━━━━━━━━━━\n"
-            f"💰 *Comment ça marche ?*\n"
-            f"• Partagez votre lien unique\n"
-            f"• Chaque ami inscrit = +{BONUS_PARRAIN} FCFA pour vous\n"
-            f"• Votre ami reçoit +{BONUS_FILLEUL} FCFA de bienvenue\n"
-            f"• Retrait dès 5 000 FCFA\n"
-            f"━━━━━━━━━━━━━━━━━━━━\n"
-            f"{bonus_txt}\n\nChoisissez une option ci-dessous 👇"
+            f"💰 *Comment gagner ?*\n"
+            f"🔗 Partagez votre lien unique\n"
+            f"👥 Chaque ami inscrit = *+{BONUS_PARRAIN} FCFA* pour vous\n"
+            f"🎁 Votre ami reçoit *+{BONUS_FILLEUL} FCFA* de bienvenue\n"
+            f"💸 Retrait possible dès *5 000 FCFA*\n"
+            f"━━━━━━━━━━━━━━━━━━━━\n\n"
+            f"{bonus_txt}"
+            f"⚠️ *Information importante :*\n"
+            f"_Notre bot peut parfois mettre jusqu'à\n"
+            f"30 secondes avant de répondre.\n"
+            f"C'est tout à fait normal ! 😊\n"
+            f"Il suffit de patienter un instant._\n\n"
+            f"👇 *Choisissez une option :*"
         )
     else:
         from database import get_solde
         solde = get_solde(user_id)
         message_accueil = (
             f"👋 *Bon retour, {user.first_name} !*\n\n"
-            f"💰 Votre solde : *{solde:.0f} FCFA*\n\nQue souhaitez-vous faire ? 👇"
+            f"💰 Votre solde : *{solde:.0f} FCFA*\n\n"
+            f"⚠️ _Si le bot tarde à répondre,\n"
+            f"patientez 30 secondes et réessayez. 😊_\n\n"
+            f"👇 *Que souhaitez-vous faire ?*"
         )
 
-    await update.message.reply_text(message_accueil, reply_markup=get_menu_keyboard(), parse_mode="Markdown")
+    await update.message.reply_text(
+        message_accueil,
+        reply_markup=get_menu_keyboard(),
+        parse_mode="Markdown"
+    )
 
 async def check_join_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
     query = update.callback_query
